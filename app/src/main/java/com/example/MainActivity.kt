@@ -142,8 +142,12 @@ fun DAWMainScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0x800D1520))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFF0A1018), Color.Transparent)
+                        )
+                    )
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Branded Title
@@ -208,13 +212,13 @@ fun DAWMainScreen(
 
                 Spacer(modifier = Modifier.width(16.dp))
 
-                // Action deck triggers (AI assistant & export actions)
+                // Action deck triggers (AI assistant & export actions with glass circular borders)
                 IconButton(
                     onClick = { showAiAssistantDrawer = true },
                     modifier = Modifier
-                        .size(36.dp)
-                        .background(Color(0x1A00E5FF), CircleShape)
-                        .border(1.dp, Color(0x6600E5FF), CircleShape)
+                        .size(38.dp)
+                        .background(Color(0x0DFFFFFF), CircleShape)
+                        .border(1.dp, Color(0x1AFFFFFF), CircleShape)
                         .testTag("ai_assistant_button")
                 ) {
                     Icon(
@@ -230,9 +234,9 @@ fun DAWMainScreen(
                 IconButton(
                     onClick = { showExportDialog = true },
                     modifier = Modifier
-                        .size(36.dp)
-                        .background(Color(0x1AFF007F), CircleShape)
-                        .border(1.dp, Color(0x66FF007F), CircleShape)
+                        .size(38.dp)
+                        .background(Color(0x0DFFFFFF), CircleShape)
+                        .border(1.dp, Color(0x1AFFFFFF), CircleShape)
                         .testTag("export_menu_button")
                 ) {
                     Icon(
@@ -243,6 +247,8 @@ fun DAWMainScreen(
                     )
                 }
             }
+
+            HorizontalDivider(color = Color(0x0DFFFFFF), thickness = 1.dp)
 
             // --- TRACKS TIMELINE CONSOLE VIEW ---
             Box(
@@ -281,7 +287,8 @@ fun DAWMainScreen(
                             onMuteClicked = { viewModel.toggleTrackMute(track.id) },
                             onSoloClicked = { viewModel.toggleTrackSolo(track.id) },
                             onMenuClicked = { selectedTrackMenuId = track.id },
-                            onStyleClicked = { selectedTrackStyleId = track.id }
+                            onStyleClicked = { selectedTrackStyleId = track.id },
+                            onAnalyzeClicked = { viewModel.runAudioTrackAnalysis(track.id) }
                         )
                     }
                 }
@@ -290,14 +297,23 @@ fun DAWMainScreen(
             // --- BOTTOM SECTION: SONG CATALOG / SOUND SOURCE LIBRARY ---
             Box(
                 modifier = Modifier
-                    .weight(0.9f)
+                    .weight(1.0f)
                     .fillMaxWidth()
-                    .background(Color(0x990A111A))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .border(
+                        border = BorderStroke(
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(Color(0x1BFFFFFF), Color.Transparent)
+                            )
+                        ),
+                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                    )
+                    .background(Color(0xFF0A1018))
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)
             ) {
                 Column {
-                    HorizontalDivider(color = Color(0x1F00E5FF), thickness = 1.dp)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -480,6 +496,10 @@ fun DAWMainScreen(
                     onColorPicked = { colorHex ->
                         selectedTrackMenuId = null
                         viewModel.setChannelColor(track.id, colorHex)
+                    },
+                    onAnalyzeClicked = {
+                        selectedTrackMenuId = null
+                        viewModel.runAudioTrackAnalysis(track.id)
                     }
                 )
             }
@@ -677,6 +697,55 @@ fun TimelineRuler(
     }
 }
 
+@Composable
+fun RowMetricCard(
+    title: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0x0FFFFFFF))
+            .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(10.dp)
+                )
+                Text(
+                    text = title,
+                    color = Color.Gray,
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                color = color,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
 // --- DETAILED CHANNEL TRACK MIX ROW ---
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -688,211 +757,475 @@ fun TrackTimelineRow(
     onMuteClicked: () -> Unit,
     onSoloClicked: () -> Unit,
     onMenuClicked: () -> Unit,
-    onStyleClicked: () -> Unit
+    onStyleClicked: () -> Unit,
+    onAnalyzeClicked: () -> Unit
 ) {
     val trackActiveColor = Color(android.graphics.Color.parseColor(track.colorHex))
     val isUnusedMockTrack = track.group == TrackGroup.CLONED && track.waveformPoints.isEmpty()
+    var isExpanded by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(
-                if (isUnusedMockTrack) Color(0x330E1724) else Color(0xFF0E1724)
+                if (isUnusedMockTrack) Color(0x0AFFFFFF) else Color(0x14FFFFFF)
             )
             .border(
                 width = 1.dp,
-                color = if (track.isSoloed) NeonPink else if (isUnusedMockTrack) Color(0x1A8E9AA8) else Color(0x3300E5FF),
-                shape = RoundedCornerShape(6.dp)
+                color = if (track.isSoloed) NeonPink else if (isUnusedMockTrack) Color(0x0DFFFFFF) else Color(0x1BFFFFFF),
+                shape = RoundedCornerShape(16.dp)
             )
     ) {
-        Row(
+        // Vertical neon indicator stripe matching the active channel target color (full-height matching)
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .matchParentSize()
+                .align(Alignment.CenterStart)
         ) {
-            // Track Info / Tag Block
-            Column(
-                modifier = Modifier
-                    .width(104.dp)
-                    .padding(end = 4.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(trackActiveColor)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = track.name,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                
-                Text(
-                    text = if (isUnusedMockTrack) "Status: Kosong" else "Style: ${track.currentStyle}",
-                    color = DarkTextSecondary,
-                    fontSize = 9.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Waveform Scroll Visual Canvas or Offline placeholder
             Box(
                 modifier = Modifier
-                    .weight(1.2f)
-                    .height(34.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0xFF060A0F))
+                    .fillMaxHeight()
+                    .width(4.dp)
+                    .background(trackActiveColor)
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isUnusedMockTrack) {
-                    Text(
-                        text = "--- Seret / Klik instrumen untuk aktifkan track ---",
-                        color = Color(0x338E9AA8),
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Center),
-                        textAlign = TextAlign.Center
-                    )
-                } else {
-                    // Render real multi-bar waveform details
+                // Track Info / Tag Block
+                Column(
+                    modifier = Modifier
+                        .width(104.dp)
+                        .padding(end = 4.dp)
+                        .clickable(enabled = !isUnusedMockTrack) { isExpanded = !isExpanded }
+                ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(1.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        track.waveformPoints.forEachIndexed { idx, value ->
-                            // Animate level based on playback
-                            val multiplier = if (isPlaying && (idx == (playheadSeconds / 4.5f).toInt() % 40)) 1.3f else 1.0f
-                            val h = (value * multiplier * 26.dp.value).coerceIn(2f, 32f)
-                            
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(trackActiveColor)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = track.name,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = if (isUnusedMockTrack) "Status: Kosong" else "Style: ${track.currentStyle}",
+                            color = DarkTextSecondary,
+                            fontSize = 9.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (!isUnusedMockTrack) {
                             Box(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(h.dp)
-                                    .clip(RoundedCornerShape(1.dp))
-                                    .background(
-                                        if (idx < (playheadSeconds / 4.5f).toInt()) {
-                                            trackActiveColor
-                                        } else {
-                                            trackActiveColor.copy(alpha = 0.25f)
-                                        }
-                                    )
-                            )
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (track.aiTempo != null) Color(0x2B00E5FF) else Color(0x0DFFFFFF))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "AI",
+                                    color = if (track.aiTempo != null) NeonBlue else Color.LightGray,
+                                    fontSize = 7.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Stereo panning mini scale displays
-            Column(
-                modifier = Modifier.width(42.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = when {
-                        track.pan < -0.1f -> "L ${(track.pan * -100).toInt()}"
-                        track.pan > 0.1f -> "R ${(track.pan * 100).toInt()}"
-                        else -> "Center"
-                    },
-                    color = if (kotlin.math.abs(track.pan) > 0.1f) NeonBlue else DarkTextSecondary,
-                    fontSize = 8.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // Volume Fader Slider
-            Slider(
-                value = track.volume,
-                onValueChange = onVolumeChanged,
-                valueRange = 0.0f..1.0f,
-                colors = SliderDefaults.colors(
-                    thumbColor = trackActiveColor,
-                    activeTrackColor = trackActiveColor.copy(alpha = 0.7f),
-                    inactiveTrackColor = Color(0xFF1E2638)
-                ),
-                modifier = Modifier
-                    .width(76.dp)
-                    .height(28.dp)
-                    .testTag("fader_slider_${track.id}")
-            )
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // Lit channel mixer controls (Solo and Mute)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                // Solo control button tag
+                // Waveform Scroll Visual Canvas or Offline placeholder
                 Box(
                     modifier = Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(if (track.isSoloed) NeonPink else Color(0x33FF007F))
-                        .clickable(onClick = onSoloClicked)
-                        .border(1.dp, Color(0x66FF007F), RoundedCornerShape(3.dp)),
-                    contentAlignment = Alignment.Center
+                        .weight(1.2f)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x2B000000))
+                        .clickable(enabled = !isUnusedMockTrack) { isExpanded = !isExpanded }
                 ) {
-                    Text("S", color = if (track.isSoloed) Color.Black else NeonPink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    if (isUnusedMockTrack) {
+                        Text(
+                            text = "--- Seret / Klik instrumen untuk aktifkan track ---",
+                            color = Color(0x338E9AA8),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.Center),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        // Render real multi-bar waveform details
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(1.dp)
+                        ) {
+                            track.waveformPoints.forEachIndexed { idx, value ->
+                                // Animate level based on playback
+                                val multiplier = if (isPlaying && (idx == (playheadSeconds / 4.5f).toInt() % 40)) 1.3f else 1.0f
+                                val h = (value * multiplier * 26.dp.value).coerceIn(2f, 32f)
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(h.dp)
+                                        .clip(RoundedCornerShape(1.dp))
+                                        .background(
+                                            if (idx < (playheadSeconds / 4.5f).toInt()) {
+                                                trackActiveColor
+                                            } else {
+                                                trackActiveColor.copy(alpha = 0.25f)
+                                            }
+                                        )
+                                )
+                            }
+                        }
+                    }
                 }
 
-                // Mute control button tag
-                Box(
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Stereo panning mini scale displays
+                Column(
+                    modifier = Modifier.width(42.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = when {
+                            track.pan < -0.1f -> "L ${(track.pan * -100).toInt()}"
+                            track.pan > 0.1f -> "R ${(track.pan * 100).toInt()}"
+                            else -> "Center"
+                        },
+                        color = if (kotlin.math.abs(track.pan) > 0.1f) NeonBlue else DarkTextSecondary,
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Volume Fader Slider
+                Slider(
+                    value = track.volume,
+                    onValueChange = onVolumeChanged,
+                    valueRange = 0.0f..1.0f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = trackActiveColor,
+                        activeTrackColor = trackActiveColor.copy(alpha = 0.7f),
+                        inactiveTrackColor = Color(0x1AFFFFFF)
+                    ),
                     modifier = Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(if (track.isMuted) Color.Red else Color(0x33FF0000))
-                        .clickable(onClick = onMuteClicked)
-                        .border(1.dp, Color(0x66FF0000), RoundedCornerShape(3.dp)),
-                    contentAlignment = Alignment.Center
+                        .width(76.dp)
+                        .height(28.dp)
+                        .testTag("fader_slider_${track.id}")
+                )
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Lit channel mixer controls (Solo and Mute circle triggers)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("M", color = if (track.isMuted) Color.White else Color.Red, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    // Solo control button tag
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(if (track.isSoloed) NeonPink else Color(0x11FFFFFF))
+                            .clickable(onClick = onSoloClicked)
+                            .border(1.dp, if (track.isSoloed) Color.Transparent else Color(0x1AFFFFFF), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "S",
+                            color = if (track.isSoloed) Color.Black else Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    // Mute control button tag
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(if (track.isMuted) CrimsonPeak else Color(0x11FFFFFF))
+                            .clickable(onClick = onMuteClicked)
+                            .border(1.dp, if (track.isMuted) Color.Transparent else Color(0x1AFFFFFF), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "M",
+                            color = if (track.isMuted) Color.White else CrimsonPeak,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+
+                // AI style convert button
+                IconButton(
+                    onClick = onStyleClicked,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = "AI Style Convert",
+                        tint = if (track.isCloned) NeonPink else Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+
+                // AI analysis expand toggle button (Glass circle)
+                if (!isUnusedMockTrack) {
+                    IconButton(
+                        onClick = { isExpanded = !isExpanded },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(if (isExpanded) Color(0x1A00E5FF) else Color(0x0CFFFFFF))
+                            .border(
+                                width = 1.dp,
+                                color = if (isExpanded) NeonBlue.copy(alpha = 0.5f) else Color(0x1AFFFFFF),
+                                shape = CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Open AI Track Analyzer",
+                            tint = if (track.aiTempo != null) NeonBlue else Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.width(28.dp))
+                }
+
+                // Triple dots triggers settings
+                IconButton(
+                    onClick = onMenuClicked,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Menu Setting",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.width(2.dp))
+            // --- AI ANALYSIS EXPANDED PANEL SECTION ---
+            if (!isUnusedMockTrack && isExpanded) {
+                HorizontalDivider(color = Color(0x0DFFFFFF), thickness = 1.dp)
 
-            // AI style convert button
-            IconButton(
-                onClick = onStyleClicked,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = "AI Style Convert",
-                    tint = if (track.isCloned) NeonPink else Color.White,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0x0A000000))
+                        .padding(start = 16.dp, top = 10.dp, end = 16.dp, bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = null,
+                                tint = NeonBlue,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "AI Track Analyzer Insights",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
 
-            // Triple dots triggers settings
-            IconButton(
-                onClick = onMenuClicked,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "Menu Setting",
-                    tint = Color.White,
-                    modifier = Modifier.size(14.dp)
-                )
+                        // Close or Action Trigger button
+                        if (track.isAnalyzingAi) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0x0DFFFFFF))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = NeonBlue,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Text(
+                                        text = "Menganalisis...",
+                                        color = NeonBlue,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        } else {
+                            TextButton(
+                                onClick = onAnalyzeClicked,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(24.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        tint = NeonBlue,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Text(
+                                        text = if (track.aiTempo == null) "Mulai Analisis" else "Analisis Ulang",
+                                        color = NeonBlue,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (track.isAnalyzingAi) {
+                        // Analysis Loading State
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x0AFFFFFF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Mengevaluasi karakteristik audio, mengidentifikasi tempo (BPM) & tangga nada transien...",
+                                color = DarkTextSecondary,
+                                fontSize = 9.sp,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else if (track.aiTempo == null) {
+                        // Empty/Initial State
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0x05FFFFFF))
+                                .border(1.dp, Color(0x0AFFFFFF), RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Belum ada data analisis musik untuk track ini.",
+                                    color = DarkTextSecondary,
+                                    fontSize = 10.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Klik 'Mulai Analisis' untuk menjalankan scan digital cerdas dengan Gemini AI.",
+                                    color = Color.Gray,
+                                    fontSize = 8.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        // Metrics row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            RowMetricCard(
+                                title = "TEMPO (BPM)",
+                                value = "${track.aiTempo} BPM",
+                                icon = Icons.Default.Speed,
+                                color = NeonBlue,
+                                modifier = Modifier.weight(1f)
+                            )
+                            RowMetricCard(
+                                title = "MUSIC KEY",
+                                value = track.aiKey ?: "Unidentified",
+                                icon = Icons.Default.MusicNote,
+                                color = NeonPink,
+                                modifier = Modifier.weight(1f)
+                            )
+                            RowMetricCard(
+                                title = "DETEKSI MOOD",
+                                value = track.aiMood ?: "Unidentified",
+                                icon = Icons.Default.EmojiEmotions,
+                                color = AcidGreen,
+                                modifier = Modifier.weight(1.1f)
+                            )
+                        }
+
+                        track.aiDescription?.let { desc ->
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0x1B00E5FF))
+                                    .border(1.dp, NeonBlue.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                    .padding(8.dp)
+                            ) {
+                                Text(
+                                    text = "\"$desc\"",
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 9.sp,
+                                    lineHeight = 13.sp,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                    fontFamily = FontFamily.SansSerif
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -922,23 +1255,28 @@ fun SoundLibraryPanel(
         // Horizontal category filters chips
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            contentPadding = PaddingValues(bottom = 6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 8.dp)
         ) {
             items(categories) { cat ->
                 val active = cat == selectedCategory
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (active) NeonBlue else Color(0xFF131D2A))
+                        .background(if (active) Color(0x1B00E5FF) else Color(0x0DFFFFFF))
                         .clickable { selectedCategory = cat }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .border(
+                            width = 1.dp,
+                            color = if (active) Color(0x4D00E5FF) else Color(0x1AFFFFFF),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = cat,
-                        color = if (active) Color.Black else Color.LightGray,
-                        fontSize = 10.sp,
+                        color = if (active) NeonBlue else DarkTextSecondary,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -953,12 +1291,12 @@ fun SoundLibraryPanel(
         ) {
             items(instruments) { instr ->
                 Card(
-                    shape = RoundedCornerShape(6.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF223145)),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0x0DFFFFFF)),
                     modifier = Modifier
                         .width(136.dp)
                         .clickable { onInstrumentSelected(instr) }
-                        .border(1.dp, Color(0x1AFF007F), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(12.dp))
                 ) {
                     Column(
                         modifier = Modifier.padding(8.dp)
@@ -974,7 +1312,7 @@ fun SoundLibraryPanel(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "+ Tambah ke DAW Track",
-                            color = NeonPink,
+                            color = NeonBlue,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1005,10 +1343,10 @@ fun TransportControlDeck(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF070B11))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .background(Color(0xFF0A1018))
+            .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 12.dp)
     ) {
-        HorizontalDivider(color = Color(0xFF1E2B3D), thickness = 1.dp)
+        HorizontalDivider(color = Color(0x11FFFFFF), thickness = 1.dp)
         Spacer(modifier = Modifier.height(4.dp))
         // Seek fader slider and timestamp displays
         Row(
@@ -1031,7 +1369,7 @@ fun TransportControlDeck(
                 colors = SliderDefaults.colors(
                     thumbColor = NeonPink,
                     activeTrackColor = NeonPink,
-                    inactiveTrackColor = Color(0xFF1B2230)
+                    inactiveTrackColor = Color(0x1AFFFFFF)
                 ),
                 modifier = Modifier
                     .weight(1f)
@@ -1058,10 +1396,14 @@ fun TransportControlDeck(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Loop toggle Button
+            // Loop toggle Button (Glass circle)
             IconButton(
                 onClick = onLoopToggle,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (isLooping) Color(0x1B00E5FF) else Color(0x0DFFFFFF))
+                    .border(1.dp, if (isLooping) NeonBlue.copy(alpha = 0.5f) else Color(0x1AFFFFFF), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.AllInclusive,
@@ -1073,10 +1415,14 @@ fun TransportControlDeck(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Rewind 5s
+            // Rewind 5s (Glass circle)
             IconButton(
                 onClick = onRewind,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x0DFFFFFF))
+                    .border(1.dp, Color(0x1AFFFFFF), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.FastRewind,
@@ -1088,31 +1434,34 @@ fun TransportControlDeck(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Play / Pause big core button
+            // Play / Pause big core button (Prominent pure white circle with black icon)
             FloatingActionButton(
                 onClick = onPlayPause,
                 shape = CircleShape,
-                containerColor = if (isPlaying) NeonPink else NeonBlue,
+                containerColor = Color.White,
                 contentColor = Color.Black,
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(54.dp)
                     .testTag("play_pause_fab")
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                     contentDescription = "Play Pause Toggle",
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(28.dp),
+                    tint = Color.Black
                 )
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Stop transport button
+            // Stop transport button (Glass circle)
             IconButton(
                 onClick = onStop,
                 modifier = Modifier
-                    .size(36.dp)
-                    .background(Color(0xFF1A2635), CircleShape)
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x0DFFFFFF))
+                    .border(1.dp, Color(0x1AFFFFFF), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Stop,
@@ -1124,10 +1473,14 @@ fun TransportControlDeck(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Fast forward 5s
+            // Fast forward 5s (Glass circle)
             IconButton(
                 onClick = onForward,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x0DFFFFFF))
+                    .border(1.dp, Color(0x1AFFFFFF), CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.FastForward,
@@ -1424,7 +1777,8 @@ fun TrackActionMenuDialog(
     onPanSelected: (Float) -> Unit,
     onDuplicateClicked: () -> Unit,
     onDeleteClicked: () -> Unit,
-    onColorPicked: (String) -> Unit
+    onColorPicked: (String) -> Unit,
+    onAnalyzeClicked: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1455,6 +1809,19 @@ fun TrackActionMenuDialog(
                 ) {
                     Icon(Icons.Default.Edit, contentDescription = null, tint = NeonBlue, modifier = Modifier.size(18.dp))
                     Text("Ganti Nama Track", color = Color.White, fontSize = 13.sp)
+                }
+
+                // 1b. AI analysis request trigger
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onAnalyzeClicked() }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = NeonBlue, modifier = Modifier.size(18.dp))
+                    Text("Jalankan Analisis AI Track", color = Color.White, fontSize = 13.sp)
                 }
 
                 // 2. Quick panning setup row

@@ -90,4 +90,79 @@ object GeminiClient {
             return@withContext "Gagal terhubung dengan server AI: ${e.localizedMessage}. Silakan coba lagi."
         }
     }
+
+    suspend fun analyzeTrackAudio(
+        trackName: String,
+        instrumentName: String,
+        style: String
+    ): JSONObject? = withContext(Dispatchers.IO) {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+            return@withContext null
+        }
+
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
+
+        val prompt = """
+            Identify a plausible tempo in BPM (between 70 and 155), musical key (e.g., A Minor, C# Major), mood (e.g., Energetic, Melancholic, Chill, Ambient, Cinematic), and short producer description for an audio track with:
+            - Name: "$trackName"
+            - Instrument: "$instrumentName"
+            - Style/Genre: "$style"
+            
+            Format your response strictly as a JSON object with these keys:
+            "tempo": (integer value, e.g. 120)
+            "key": (string value, e.g. "C Major" or "A Minor")
+            "mood": (string value, e.g. "Energetic", "Melancholic", "Ethereal")
+            "description": (string value in Indonesian under 15 words)
+            
+            Do not include any markdown styling like ```json or ```, only the raw JSON.
+        """.trimIndent()
+
+        val requestJson = JSONObject().apply {
+            put("contents", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("text", prompt)
+                        })
+                    })
+                })
+            })
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.2)
+                put("responseMimeType", "application/json")
+            })
+        }
+
+        val requestBody = requestJson.toString().toRequestBody(jsonMediaType)
+        
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody)
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val bodyString = response.body?.string()
+                if (!response.isSuccessful || bodyString.isNullOrEmpty()) {
+                    Log.e(TAG, "Analysis failed: ${response.code} / $bodyString")
+                    return@withContext null
+                }
+
+                val responseJson = JSONObject(bodyString)
+                val candidates = responseJson.optJSONArray("candidates")
+                val text = candidates?.optJSONObject(0)
+                    ?.optJSONObject("content")
+                    ?.optJSONArray("parts")
+                    ?.optJSONObject(0)
+                    ?.optString("text")
+
+                if (text.isNullOrEmpty()) return@withContext null
+                return@withContext JSONObject(text.trim())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception during analysis call: ${e.message}", e)
+            return@withContext null
+        }
+    }
 }

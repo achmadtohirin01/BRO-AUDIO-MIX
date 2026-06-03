@@ -19,7 +19,12 @@ data class ChannelTrack(
     val vuRight: Float = 0.0f,          // Current Right channel output level (0.0f to 1.0f)
     val isCloned: Boolean = false,      // Has this track undergone AI Instrument Cloning?
     val originalStyle: String = "Pop",  // Original audio style
-    val currentStyle: String = "Pop"    // Current transformed style
+    val currentStyle: String = "Pop",   // Current transformed style
+    val aiTempo: Int? = null,           // Identified tempo (e.g., 125 BPM)
+    val aiKey: String? = null,             // Identified musical key (e.g., "G Minor")
+    val aiMood: String? = null,            // Identified mood (e.g., "Atmospheric")
+    val aiDescription: String? = null,     // AI generated prose explanation / summary
+    val isAnalyzingAi: Boolean = false  // True if analysis is in progress
 )
 
 enum class TrackGroup {
