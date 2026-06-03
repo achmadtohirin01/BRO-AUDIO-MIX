@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.net.Uri
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,10 +16,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val synthesizer = AudioSynthesizer()
+
+    // Navigation and screen focus toggler (Moises-style catalog vs Player view)
+    private val _showLibrary = MutableStateFlow(true)
+    val showLibrary = _showLibrary.asStateFlow()
+
+    fun setShowLibrary(show: Boolean) {
+        _showLibrary.value = show
+    }
 
     // Active track structures (Tracks 1-10)
     private val _tracks = MutableStateFlow<List<ChannelTrack>>(emptyList())
@@ -81,26 +91,54 @@ class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _importedSongs = MutableStateFlow<List<AudioSongSample>>(emptyList())
     val importedSongs = _importedSongs.asStateFlow()
 
+    fun deleteSongFromLibrary(songId: String) {
+        _importedSongs.value = _importedSongs.value.filter { it.id != songId }
+        if (_currentSong.value?.id == songId) {
+            stopPlayback()
+            _currentSong.value = null
+        }
+    }
+
     fun importAudioFromStorage(uriString: String, fileName: String) {
-        val cleanName = fileName.substringBeforeLast(".")
-        val newSample = AudioSongSample(
-            id = "custom_${System.currentTimeMillis()}",
-            title = cleanName,
-            artist = "Penyimpanan Perangkat",
-            genre = "Audio Impor",
-            durationText = "03:45",
-            basicStyles = listOf("Pop", "EDM", "Rock", "Acoustic", "Jazz"),
-            tracksData = listOf(
-                ChannelTrackPreset(1, "Vocal Stem", "AI Extracted Vocal", "#00E5FF", 1.2f),
-                ChannelTrackPreset(2, "Melody Stem", "AI Extracted Melody", "#FF007F", 0.8f),
-                ChannelTrackPreset(3, "Harmony Stem", "AI Extracted Harmony", "#FFD700", 1.1f),
-                ChannelTrackPreset(4, "Bass Stem", "AI Extracted Bass", "#39FF14", 0.9f),
-                ChannelTrackPreset(5, "Percussion Stem", "AI Extracted Beats", "#EA80FC", 1.1f)
-            ),
-            uriString = uriString
-        )
-        _importedSongs.value = _importedSongs.value + newSample
-        loadSongSample(newSample)
+        viewModelScope.launch {
+            val cleanName = fileName.substringBeforeLast(".")
+            
+            // Unify permissions and access by copying the file data into a robust local app cache file
+            val cachedFile = File(app.cacheDir, "imported_audio_${System.currentTimeMillis()}.mp3")
+            try {
+                app.contentResolver.openInputStream(Uri.parse(uriString))?.use { input ->
+                    cachedFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(app, "Gagal menyalin file audio: ${e.message}", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+
+            val pcmUriString = Uri.fromFile(cachedFile).toString()
+
+            val newSample = AudioSongSample(
+                id = "custom_${System.currentTimeMillis()}",
+                title = cleanName,
+                artist = "Penyimpanan Perangkat",
+                genre = "Audio Impor",
+                durationText = "03:45",
+                basicStyles = listOf("Pop", "EDM", "Rock", "Acoustic", "Jazz"),
+                tracksData = listOf(
+                    ChannelTrackPreset(1, "Vokal", "AI Extracted Vocal", "#00E5FF", 1.2f),
+                    ChannelTrackPreset(2, "Gitar", "AI Extracted Guitar", "#FF007F", 0.8f),
+                    ChannelTrackPreset(3, "Instrumen Utama", "AI Extracted Main Synth", "#FFD700", 1.1f),
+                    ChannelTrackPreset(4, "Bass", "AI Extracted Bass", "#39FF14", 0.9f),
+                    ChannelTrackPreset(5, "Drum", "AI Extracted Beats", "#EA80FC", 1.1f)
+                ),
+                uriString = pcmUriString
+            )
+            _importedSongs.value = _importedSongs.value + newSample
+            _showLibrary.value = false // Switch to the mixer screen instantly!
+            loadSongSample(newSample)
+        }
     }
 
     init {

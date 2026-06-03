@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -147,276 +148,1098 @@ fun DAWMainScreen(
         }
     }
 
+    // Moises-style UI parameters
+    var songOptionsDetailsSelected by remember { mutableStateOf<AudioSongSample?>(null) }
+    var showPlayerOptions by remember { mutableStateOf(false) }
+    var showLyricsModal by remember { mutableStateOf(false) }
+    var isMetronomeOn by remember { mutableStateOf(false) }
+    var pitchSemiTones by remember { mutableStateOf(0) }
+    var showSearchField by remember { mutableStateOf(false) }
+    var currentSearchQuery by remember { mutableStateOf("") }
+    var showInfoDialogForSong by remember { mutableStateOf<AudioSongSample?>(null) }
+
+    val showLibrary by viewModel.showLibrary.collectAsState()
+
+    val baruTerasaLyrics = listOf(
+        "Setiap keindahan yang kau berikan",
+        "Kini terasa bagai mimpi belaka",
+        "Seiring waktu berganti malam sunyi",
+        "Baru terasa betapa ku mencinta...",
+        "Jangan kau pergi tinggalkan diriku sendiri",
+        "Tanpa dirimu ku tak berdaya",
+        "Hanya bayangmu menemani sepi ini",
+        "Baru terasa arti kehadiranmu..."
+    )
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(DeepBackground)
     ) {
-        // Futuristic grid background styling
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val cols = size.width / 40.dp.toPx()
-            val rows = size.height / 40.dp.toPx()
-            for (i in 0..cols.toInt()) {
-                drawLine(
-                    color = Color(0x0500E5FF),
-                    start = androidx.compose.ui.geometry.Offset(i * 40.dp.toPx(), 0f),
-                    end = androidx.compose.ui.geometry.Offset(i * 40.dp.toPx(), size.height),
-                    strokeWidth = 1f
-                )
-            }
-            for (i in 0..rows.toInt()) {
-                drawLine(
-                    color = Color(0x0500E5FF),
-                    start = androidx.compose.ui.geometry.Offset(0f, i * 40.dp.toPx()),
-                    end = androidx.compose.ui.geometry.Offset(size.width, i * 40.dp.toPx()),
-                    strokeWidth = 1f
-                )
-            }
-        }
-
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // --- TOP DECK: HEADER, MASTER LEVEL METERS & ANALYZERS ---
-            Row(
+        if (showLibrary) {
+            // ==========================================
+            // SCREEN 1: MOISES-STYLE LIBRARY VIEW
+            // ==========================================
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color(0xFF0A1018), Color.Transparent)
-                        )
-                    )
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxSize()
+                    .padding(16.dp)
             ) {
-                // Branded Title
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "BRO AUDIO MIX",
-                        color = NeonBlue,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.testTag("header_app_title")
-                    )
-                    Text(
-                        text = currentSong?.let { "${it.title} - ${it.artist}" } ?: "Siap Impor Audio",
-                        color = DarkTextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                // Header Row
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showSearchField) {
+                        OutlinedTextField(
+                            value = currentSearchQuery,
+                            onValueChange = { currentSearchQuery = it },
+                            placeholder = { Text("Cari lagu...", color = Color.Gray, fontSize = 14.sp) },
+                            singleLine = true,
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    showSearchField = false
+                                    currentSearchQuery = ""
+                                }) {
+                                    Icon(Icons.Default.Close, contentDescription = null, tint = Color.White)
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NeonBlue,
+                                unfocusedBorderColor = Color(0x33FFFFFF)
+                            ),
+                            modifier = Modifier.weight(1f).height(50.dp)
+                        )
+                    } else {
+                        Text(
+                            text = "Lagu",
+                            color = Color.White,
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.SansSerif
+                        )
+                        IconButton(onClick = { showSearchField = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
                 }
 
-                // AI Spectrum & Wave viewer deck
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Action Pills (Rekam & Menambahkan)
                 Row(
-                    modifier = Modifier
-                        .width(110.dp)
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF04080F))
-                        .border(1.dp, Color(0x3300E5FF)),
-                    verticalAlignment = Alignment.Bottom,
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    spectrumBands.forEach { bandValue ->
-                        val barHeight = animateFloatAsState(
-                            targetValue = if (isPlaying) bandValue * 30.dp.value else 2.dp.value,
-                            animationSpec = spring(stiffness = Spring.StiffnessLow),
-                            label = "band"
+                    // Pulse Record Pill
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color(0x1BFFFFFF))
+                            .clickable {
+                                Toast.makeText(context, "Merekam sampel audio eksternal secara digital...", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                        val pulseAlpha by infiniteTransition.animateFloat(
+                            initialValue = 0.3f,
+                            targetValue = 1.0f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1000, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "pulse"
                         )
                         Box(
                             modifier = Modifier
-                                .width(6.dp)
-                                .height(barHeight.value.dp)
-                                .background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(NeonPink, NeonBlue)
-                                    ),
-                                    shape = RoundedCornerShape(topStart = 1.dp, topEnd = 1.dp)
-                                )
+                                .size(8.dp)
+                                .background(Color.Red.copy(alpha = pulseAlpha), CircleShape)
                         )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                // Master Dual Stereo METERS & Peak warning
-                MasterPeakMeter(
-                    mvLeft = mvLeft,
-                    mvRight = mvRight,
-                    isClipping = isClipping
-                )
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                // Action deck triggers (AI assistant & export actions with glass circular borders)
-                IconButton(
-                    onClick = { showAiAssistantDrawer = true },
-                    modifier = Modifier
-                        .size(38.dp)
-                        .background(Color(0x0DFFFFFF), CircleShape)
-                        .border(1.dp, Color(0x1AFFFFFF), CircleShape)
-                        .testTag("ai_assistant_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SmartToy,
-                        contentDescription = "Bro AI Assistant",
-                        tint = NeonBlue,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = { showExportDialog = true },
-                    modifier = Modifier
-                        .size(38.dp)
-                        .background(Color(0x0DFFFFFF), CircleShape)
-                        .border(1.dp, Color(0x1AFFFFFF), CircleShape)
-                        .testTag("export_menu_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SaveAlt,
-                        contentDescription = "Export Track",
-                        tint = NeonPink,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            HorizontalDivider(color = Color(0x0DFFFFFF), thickness = 1.dp)
-
-            // --- TRACKS TIMELINE CONSOLE VIEW ---
-            Box(
-                modifier = Modifier
-                    .weight(1.3f)
-                    .fillMaxWidth()
-            ) {
-                if (isPlaying) {
-                    // Scrolling visualizer bar indicator across screen
-                    LinearProgressIndicator(
-                        progress = { (playheadSeconds / 180.0f).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(2.dp),
-                        color = NeonPink,
-                        trackColor = Color.Transparent,
-                    )
-                }
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Header timeline markers
-                    item {
-                        TimelineRuler(playheadSeconds = playheadSeconds)
-                    }
-
-                    items(tracks, key = { it.id }) { track ->
-                        TrackTimelineRow(
-                            track = track,
-                            isPlaying = isPlaying,
-                            playheadSeconds = playheadSeconds,
-                            onVolumeChanged = { viewModel.updateTrackVolume(track.id, it) },
-                            onMuteClicked = { viewModel.toggleTrackMute(track.id) },
-                            onSoloClicked = { viewModel.toggleTrackSolo(track.id) },
-                            onMenuClicked = { selectedTrackMenuId = track.id },
-                            onStyleClicked = { selectedTrackStyleId = track.id },
-                            onAnalyzeClicked = { viewModel.runAudioTrackAnalysis(track.id) }
-                        )
-                    }
-                }
-            }
-
-            // --- BOTTOM SECTION: SONG CATALOG / SOUND SOURCE LIBRARY ---
-            Box(
-                modifier = Modifier
-                    .weight(1.0f)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                    .border(
-                        border = BorderStroke(
-                            width = 1.dp,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(Color(0x1BFFFFFF), Color.Transparent)
-                            )
-                        ),
-                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-                    )
-                    .background(Color(0xFF0A1018))
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 8.dp)
-            ) {
-                Column {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "LIBRARY INSTRUMEN & SUMBER AUDIO",
+                            text = "Rekam",
                             color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            letterSpacing = 1.sp
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
                         )
-
-                        TextButton(
-                            onClick = { showImportSheet = true },
-                            colors = ButtonDefaults.textButtonColors(contentColor = NeonBlue)
-                        ) {
-                            Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Impor Audio Penyimpanan", fontSize = 11.sp)
-                        }
                     }
 
-                    // Multi-category instrumental sound library panel (Tracks 6-10 destination drops)
-                    SoundLibraryPanel(
-                        onInstrumentSelected = { instrumentName ->
-                            val emptyClonedTrack = tracks.firstOrNull { it.group == TrackGroup.CLONED && it.volume <= 0.05f }
-                            if (emptyClonedTrack != null) {
-                                viewModel.injectLibraryInstrument(emptyClonedTrack.id, instrumentName)
-                            } else {
-                                Toast.makeText(context, "Maksimum track tambahan (F6-F10) telah terisi! Hapus atau bersihkan track tambahan.", Toast.LENGTH_LONG).show()
+                    // + Menambahkan Pill
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color(0xFF0D1E2D))
+                            .border(1.5.dp, Color(0xFF00E5FF), RoundedCornerShape(24.dp))
+                            .clickable {
+                                audioPickerLauncher.launch("audio/*")
+                            }
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Menambahkan",
+                            color = Color(0xFF00E5FF),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // List header
+                val filteredList = importedSongs.filter {
+                    it.title.contains(currentSearchQuery, ignoreCase = true) ||
+                    it.artist.contains(currentSearchQuery, ignoreCase = true)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Semua (${filteredList.size})",
+                        color = Color.LightGray,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Ditambahkan", color = Color.Gray, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(
+                            imageVector = Icons.Default.ArrowDownward,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // List of songs
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (filteredList.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Belum ada file audio diimpor.\nKlik + Menambahkan untuk memuat lagu dari penyimpanan.",
+                                    color = Color.Gray,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
-                    )
+                    } else {
+                        items(filteredList) { song ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0x0CFFFFFF))
+                                    .clickable {
+                                        viewModel.setShowLibrary(false)
+                                        viewModel.loadSongSample(song)
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Square thumbnail representation
+                                Box(
+                                    modifier = Modifier
+                                        .size(50.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF131D28)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MusicNote,
+                                        contentDescription = "Music",
+                                        tint = Color(0xFF00E5FF),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(14.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = song.title,
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = song.artist,
+                                        color = Color.Gray,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                IconButton(onClick = { songOptionsDetailsSelected = song }) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Song options",
+                                        tint = Color.LightGray
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Mini progress fader playback if song has active track
+                currentSong?.let { song ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF0F1B2B))
+                            .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(14.dp))
+                            .clickable { viewModel.setShowLibrary(false) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = song.title,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = song.artist,
+                                color = Color.LightGray,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                        IconButton(onClick = { viewModel.togglePlayPause() }) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.White
+                            )
+                        }
+                        IconButton(onClick = { viewModel.seekTo(playheadSeconds + 10f) }) {
+                            Icon(
+                                imageVector = Icons.Default.FastForward,
+                                contentDescription = null,
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Bottom Tab selection Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable { }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Lagu", color = Color(0xFF00E5FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable {
+                            Toast.makeText(context, "Sistem Setlist lagu akan segera hadir!", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        BadgedBox(
+                            badge = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .background(Color(0xFF00E5FF), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("1", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QueueMusic,
+                                contentDescription = null,
+                                tint = Color.Gray
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Setlists", color = Color.Gray, fontSize = 10.sp)
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable {
+                            Toast.makeText(context, "Akun Aktif: Moises Pro Edition", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Profil", color = Color.Gray, fontSize = 10.sp)
+                    }
                 }
             }
-
-            // --- DECK FOOTER: TRANSPORT & TIME SEEK CONTROLS ---
-            TransportControlDeck(
-                isPlaying = isPlaying,
-                isLooping = isLooping,
-                playheadSeconds = playheadSeconds,
-                onPlayPause = { viewModel.togglePlayPause() },
-                onStop = { viewModel.resetTransport() },
-                onRewind = { viewModel.seekTo(playheadSeconds - 5.1f) },
-                onForward = { viewModel.seekTo(playheadSeconds + 5.1f) },
-                onLoopToggle = { viewModel.toggleLoop() },
-                onSeek = { viewModel.seekTo(it) }
-            )
-
-            // Permanent watermark footer
-            Text(
-                text = "Bro Audio Banjarnegara",
-                color = Color(0x408E9AA8),
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
+        } else {
+            // ==========================================
+            // SCREEN 2: MOISES-STYLE MIXING STUDIO PLAYER
+            // ==========================================
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 6.dp),
-                textAlign = TextAlign.Center
-            )
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header (Back button, Title, Chord Badge & pad lock)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { viewModel.setShowLibrary(true) }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Text(
+                        text = currentSong?.title ?: "Sedang Memutar",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        textAlign = TextAlign.Center
+                    )
+
+                    // Chord badge
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 30.dp, height = 28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x10FFFFFF))
+                        )
+                        // Active chord
+                        Box(
+                            modifier = Modifier
+                                .size(width = 54.dp, height = 28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x2200E5FF))
+                                .border(1.dp, Color(0xFF00E5FF), RoundedCornerShape(6.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val chords = listOf("F#m", "Gm", "G#m", "Am", "A#m", "Bm", "Cm", "C#m", "Dm", "D#m", "Em", "Fm")
+                            val baseOffset = when (currentSong?.id) {
+                                "s1" -> 4  // F#m Base
+                                "s2" -> 7  // Am Base
+                                else -> 0  // Dm Base
+                            }
+                            val finalOffset = (baseOffset + pitchSemiTones + 120) % 12
+                            Text(
+                                text = chords[finalOffset],
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(width = 30.dp, height = 28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x10FFFFFF))
+                        )
+                        IconButton(
+                            onClick = { Toast.makeText(context, "Pratinjau Kunci Akord Moises", Toast.LENGTH_SHORT).show() },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(Color(0x14FFFFFF), RoundedCornerShape(6.dp))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Beautiful 5 isolated stem fader tracks
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val displayStems = tracks.take(5)
+                    displayStems.forEach { track ->
+                        val iconSelected = when (track.id) {
+                            1 -> Icons.Default.Mic
+                            5 -> Icons.Default.GraphicEq
+                            2 -> Icons.Default.Audiotrack
+                            4 -> Icons.Default.Hearing
+                            else -> Icons.Default.Keyboard
+                        }
+
+                        val trackColorLabel = if (track.isMuted) Color.Gray else Color(0xFF00E5FF)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = iconSelected,
+                                contentDescription = track.name,
+                                tint = trackColorLabel,
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clickable { viewModel.toggleTrackMute(track.id) }
+                            )
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Slider(
+                                value = track.volume,
+                                onValueChange = { viewModel.updateTrackVolume(track.id, it) },
+                                valueRange = 0f..1f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color(0xFF00E5FF),
+                                    activeTrackColor = Color(0xFF00E5FF),
+                                    inactiveTrackColor = Color(0x22FFFFFF)
+                                ),
+                                modifier = Modifier.weight(1f).testTag("track_slider_fader_${track.id}")
+                            )
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            IconButton(onClick = { selectedTrackMenuId = track.id }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = null,
+                                    tint = Color.LightGray
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // AI Sparkle and solo chips filter selector
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { Toast.makeText(context, "Optimalisasi mixing cerdas AI Moises diaktifkan!", Toast.LENGTH_SHORT).show() },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(Color(0x0CFFFFFF), CircleShape)
+                            .border(1.dp, Color(0x3300E5FF), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "AI Sparkle",
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    // Chip Drum (Track 5)
+                    val isDrumSolo = tracks.firstOrNull { it.id == 5 }?.isSoloed == true
+                    FilterChip(
+                        selected = isDrumSolo,
+                        onClick = { viewModel.toggleTrackSolo(5) },
+                        leadingIcon = {
+                            Icon(Icons.Default.GraphicEq, contentDescription = null, modifier = Modifier.size(14.dp))
+                        },
+                        label = { Text("Drum", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0x2200E5FF),
+                            selectedLabelColor = Color(0xFF00E5FF),
+                            selectedLeadingIconColor = Color(0xFF00E5FF),
+                            containerColor = Color(0x0CFFFFFF),
+                            labelColor = Color.White,
+                            iconColor = Color.LightGray
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, if (isDrumSolo) Color(0xFF00E5FF) else Color(0x1AFFFFFF))
+                    )
+
+                    // Chip Bass (Track 4)
+                    val isBassSolo = tracks.firstOrNull { it.id == 4 }?.isSoloed == true
+                    FilterChip(
+                        selected = isBassSolo,
+                        onClick = { viewModel.toggleTrackSolo(4) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Hearing, contentDescription = null, modifier = Modifier.size(14.dp))
+                        },
+                        label = { Text("Bas", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0x2200E5FF),
+                            selectedLabelColor = Color(0xFF00E5FF),
+                            selectedLeadingIconColor = Color(0xFF00E5FF),
+                            containerColor = Color(0x0CFFFFFF),
+                            labelColor = Color.White,
+                            iconColor = Color.LightGray
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, if (isBassSolo) Color(0xFF00E5FF) else Color(0x1AFFFFFF))
+                    )
+
+                    // Chip Gitar (Track 2)
+                    val isGuitarSolo = tracks.firstOrNull { it.id == 2 }?.isSoloed == true
+                    FilterChip(
+                        selected = isGuitarSolo,
+                        onClick = { viewModel.toggleTrackSolo(2) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(14.dp))
+                        },
+                        label = { Text("Gitar", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0x2200E5FF),
+                            selectedLabelColor = Color(0xFF00E5FF),
+                            selectedLeadingIconColor = Color(0xFF00E5FF),
+                            containerColor = Color(0x0CFFFFFF),
+                            labelColor = Color.White,
+                            iconColor = Color.LightGray
+                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, if (isGuitarSolo) Color(0xFF00E5FF) else Color(0x1AFFFFFF))
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Wave progress timeline sliding indicator
+                val totalSeconds = 180f
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val playedMinutes = playheadSeconds.toInt() / 60
+                    val playedSeconds = playheadSeconds.toInt() % 60
+                    Text(
+                        text = String.format("%d:%02d", playedMinutes, playedSeconds),
+                        color = Color.LightGray,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    val leftSecondsTotal = (totalSeconds - playheadSeconds).toInt()
+                    val leftMinutes = leftSecondsTotal / 60
+                    val leftSecondsRemaining = leftSecondsTotal % 60
+                    Text(
+                        text = String.format("-%d:%02d", leftMinutes, leftSecondsRemaining),
+                        color = Color.LightGray,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Slider(
+                    value = playheadSeconds,
+                    onValueChange = { viewModel.seekTo(it) },
+                    valueRange = 0f..totalSeconds,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color(0x2AFFFFFF)
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(24.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Transport bottom dock
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Metronome toggle
+                    IconButton(onClick = {
+                        isMetronomeOn = !isMetronomeOn
+                        Toast.makeText(context, "Metronome: " + (if (isMetronomeOn) "ON" else "OFF"), Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Timer,
+                            contentDescription = "Metronome",
+                            tint = if (isMetronomeOn) Color(0xFF00E5FF) else Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // Reset/Rewind
+                    IconButton(onClick = { viewModel.seekTo(0f) }) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Rewind",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    // Play/Pause circular white button
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .clickable { viewModel.togglePlayPause() }
+                            .testTag("moises_master_play_pause"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "Play/Pause",
+                            tint = Color.Black,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+
+                    // Forward skip
+                    IconButton(onClick = { viewModel.seekTo((playheadSeconds + 10f).coerceAtMost(totalSeconds)) }) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Fast Forward",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    // Pitch / Transposer change button (key changing)
+                    IconButton(onClick = {
+                        pitchSemiTones = if (pitchSemiTones >= 4) -4 else pitchSemiTones + 1
+                        Toast.makeText(context, "Tranposisi Nada: ${if (pitchSemiTones >= 0) "+$pitchSemiTones" else pitchSemiTones} Semitone", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Text(
+                            text = "b#",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Bottom toolbar keys (Lyrics, AI panel, Options export list)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { showLyricsModal = true }) {
+                        Icon(
+                            imageVector = Icons.Default.ChatBubble,
+                            contentDescription = "Chat",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    IconButton(onClick = { showAiAssistantDrawer = true }) {
+                        Icon(
+                            imageVector = Icons.Default.GridView,
+                            contentDescription = "Grid Layout",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    IconButton(onClick = { showPlayerOptions = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Export menu",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
         }
+    }
+
+    // ==========================================
+    // OVERLAYS & SHEETS POPUPS (CUSTOM CODED)
+    // ==========================================
+
+    // 1. Library Song Options Sheet (Screenshot 4)
+    songOptionsDetailsSelected?.let { targetSong ->
+        AlertDialog(
+            onDismissRequest = { songOptionsDetailsSelected = null },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = SurfaceDark,
+            title = {
+                Text(
+                    text = targetSong.title,
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            songOptionsDetailsSelected = null
+                            Toast.makeText(context, "Lagu ditambahkan ke Setlist Baru!", Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.QueueMusic, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Tambahkan ke sebuah setlist", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            songOptionsDetailsSelected = null
+                            showLyricsModal = true
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ChatBubble, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Lihat Lirik Lagu", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            songOptionsDetailsSelected = null
+                            showInfoDialogForSong = targetSong
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Info file", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            songOptionsDetailsSelected = null
+                            Toast.makeText(context, "Menyalin berkas kustom ke media internal...", Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Bongkar muat dari perangkat", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            val id = targetSong.id
+                            songOptionsDetailsSelected = null
+                            viewModel.deleteSongFromLibrary(id)
+                            Toast.makeText(context, "Lagu dihapus dari perpustakaan.", Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, tint = NeonPink)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Hapus dari Perpustakaan", color = NeonPink, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { songOptionsDetailsSelected = null }) {
+                    Text("Tutup", color = NeonBlue)
+                }
+            }
+        )
+    }
+
+    // 1b. Custom File Info dialog
+    showInfoDialogForSong?.let { song ->
+        AlertDialog(
+            onDismissRequest = { showInfoDialogForSong = null },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialogForSong = null }) {
+                    Text("OK", color = NeonBlue)
+                }
+            },
+            title = { Text("Informasi Berkas", color = Color.White) },
+            text = { Text("Judul: ${song.title}\nArtis: ${song.artist}\nFormat: MP3 Audio Stereo\nSinya: 16-Bit PCM 22.1kHz", color = Color.Gray) },
+            containerColor = SurfaceDark,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // 2. Playback Mixer Options Selector "Pilihan lagu" (Screenshot 2)
+    if (showPlayerOptions) {
+        AlertDialog(
+            onDismissRequest = { showPlayerOptions = false },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = SurfaceDark,
+            title = {
+                Text(
+                    text = "Pilihan lagu",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            showPlayerOptions = false
+                            // Reset all slider values back to 1.0
+                            tracks.take(5).forEach {
+                                viewModel.updateTrackVolume(it.id, 0.8f)
+                            }
+                            Toast.makeText(context, "Volume diatur ke aslinya!", Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Kembali ke aslinya", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            showPlayerOptions = false
+                            showExportDialog = true
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.SaveAlt, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Ekspor / Render Musik", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            showPlayerOptions = false
+                            Toast.makeText(context, "Lagu telah dipisahkan ke 5 Trek AI resolusi tinggi!", Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Pemisahan (5 Trek)", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            isMetronomeOn = !isMetronomeOn
+                            showPlayerOptions = false
+                            Toast.makeText(context, "Hitungan Metronome: " + (if (isMetronomeOn) "ON" else "OFF"), Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Timer, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Hitungan (" + (if (isMetronomeOn) "ON" else "OFF") + ")", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            showPlayerOptions = false
+                            Toast.makeText(context, "Memotong audio lagu eksternal...", Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Crop, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Pangkas", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            showPlayerOptions = false
+                            Toast.makeText(context, "Kunci Nada Utama: " + (if (currentSong?.id == "s1") "F#m (F Sharp Minor)" else "Am"), Toast.LENGTH_SHORT).show()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Akord Nada", color = Color.White, fontSize = 14.sp)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            showPlayerOptions = false
+                            viewModel.toggleLoop()
+                        },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Loop, contentDescription = null, tint = Color.LightGray)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Mulai Ulang Terus (Repeat)", color = Color.White, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = isLooping,
+                            onCheckedChange = { viewModel.toggleLoop() },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF00E5FF),
+                                checkedTrackColor = Color(0x3300E5FF)
+                            )
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPlayerOptions = false }) {
+                    Text("Selesai", color = NeonBlue)
+                }
+            }
+        )
+    }
+
+    // 3. Lyrics Scrolling Box Display
+    if (showLyricsModal) {
+        AlertDialog(
+            onDismissRequest = { showLyricsModal = false },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = SurfaceDark,
+            title = {
+                Text(
+                    text = "Lirik: " + (currentSong?.title ?: "Baru Terasa"),
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                ) {
+                    val listState = rememberLazyListState()
+                    val lyricsToUse = if (currentSong?.id == "s2") {
+                        listOf(
+                            "Kala kupandang kerlap-kerlip bintang nan jauh disana",
+                            "Sayup kudengar melodi cinta yang menggema",
+                            "Kopi dangdut membuat kita senantiasa gembira",
+                            "Mari bernyanyi bersama di malam pesta...",
+                            "Detak jantungku bagai kendang berirama salsa",
+                            "Membuat semua gelora asmara semakin nyata",
+                            "Baru terasa indahnya menyanyi bersama",
+                            "Mari berdansa kopi dangdut sepanjang masa!"
+                        )
+                    } else {
+                        baruTerasaLyrics
+                    }
+
+                    // Auto scroll lyrics index based on elapsed seconds
+                    val activeLyricIndex = ((playheadSeconds / 180f) * lyricsToUse.size).toInt().coerceIn(0, lyricsToUse.size - 1)
+
+                    LaunchedEffect(activeLyricIndex) {
+                        listState.animateScrollToItem(activeLyricIndex)
+                    }
+
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        itemsIndexed(lyricsToUse) { idx, line ->
+                            val isActive = idx == activeLyricIndex
+                            Text(
+                                text = line,
+                                color = if (isActive) Color(0xFF00E5FF) else Color.Gray,
+                                fontSize = if (isActive) 16.sp else 13.sp,
+                                fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Normal,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLyricsModal = false }) {
+                    Text("Tutup", color = NeonBlue)
+                }
+            }
+        )
+    }
 
         // --- PROGRESS OVERLAY FOR AI AUDIO ANALYSIS STEM SPLITTING ---
         if (isAnalyzing) {
@@ -607,7 +1430,6 @@ fun DAWMainScreen(
             )
         }
     }
-}
 
 // --- MASTER PEAK METER COMPONENT ---
 @Composable
