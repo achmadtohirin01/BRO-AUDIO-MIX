@@ -88,7 +88,40 @@ class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private var playbackJob: Job? = null
 
-    private val _importedSongs = MutableStateFlow<List<AudioSongSample>>(emptyList())
+    private val _importedSongs = MutableStateFlow<List<AudioSongSample>>(
+        listOf(
+            AudioSongSample(
+                id = "s1",
+                title = "Baru Terasa",
+                artist = "Achmad Tohirin",
+                genre = "Slow Pop Indo",
+                durationText = "03:18",
+                basicStyles = listOf("Pop", "Rock", "Acoustic", "Jazz"),
+                tracksData = listOf(
+                    ChannelTrackPreset(1, "Vokal", "AI Extracted Vocal", "#00E5FF", 1.2f),
+                    ChannelTrackPreset(2, "Gitar", "AI Extracted Guitar", "#FF007F", 0.8f),
+                    ChannelTrackPreset(3, "Instrumen Utama", "AI Extracted Main Synth", "#FFD700", 1.1f),
+                    ChannelTrackPreset(4, "Bass", "AI Extracted Bass", "#39FF14", 0.9f),
+                    ChannelTrackPreset(5, "Drum", "AI Extracted Beats", "#EA80FC", 1.1f)
+                )
+            ),
+            AudioSongSample(
+                id = "s2",
+                title = "Kopi Dangdut",
+                artist = "Fahmi Shahab",
+                genre = "Salsa Dangdut",
+                durationText = "03:12",
+                basicStyles = listOf("Dangdut", "Latin", "Pop", "EDM"),
+                tracksData = listOf(
+                    ChannelTrackPreset(1, "Vokal Utama", "Lead Singer Vocal", "#00E5FF", 1.2f),
+                    ChannelTrackPreset(2, "Classical Guitar", "Salsa Guitar Block", "#FF007F", 0.8f),
+                    ChannelTrackPreset(3, "Brass Section", "Trumpet Accent", "#FFD700", 1.1f),
+                    ChannelTrackPreset(4, "Bass Line", "Salsa Bass", "#39FF14", 0.9f),
+                    ChannelTrackPreset(5, "Kendang Beats", "Percussion Block", "#EA80FC", 1.1f)
+                )
+            )
+        )
+    )
     val importedSongs = _importedSongs.asStateFlow()
 
     fun deleteSongFromLibrary(songId: String) {
