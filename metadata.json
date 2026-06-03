@@ -1,0 +1,6 @@
+{
+  "name": "BRO AUDIO MIX",
+  "description": "Professional Android Workstation (DAW) with AI song analysis, multi-track stem separation, instrument cloning presets, Panning, Master VU peaks, and real-time synthesis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
