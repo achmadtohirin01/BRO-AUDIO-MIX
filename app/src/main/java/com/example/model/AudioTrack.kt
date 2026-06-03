@@ -40,7 +40,8 @@ data class AudioSongSample(
     val genre: String,
     val durationText: String,
     val basicStyles: List<String>,
-    val tracksData: List<ChannelTrackPreset>
+    val tracksData: List<ChannelTrackPreset>,
+    val uriString: String? = null
 )
 
 data class ChannelTrackPreset(

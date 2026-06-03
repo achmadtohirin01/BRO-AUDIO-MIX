@@ -24,6 +24,14 @@ class AudioSynthesizer {
     
     // Thread-safe copy of tracks being rendered in active synthesis
     private var synthTracks: List<ChannelTrack> = emptyList()
+
+    // Decoded imported audio PCM buffer
+    @Volatile
+    private var importedPcm: FloatArray? = null
+
+    fun setImportedPcm(pcm: FloatArray?) {
+        importedPcm = pcm
+    }
     
     // Waveform frequencies and counters
     private var sampleRate = 22050
@@ -180,6 +188,83 @@ class AudioSynthesizer {
     }
 
     private fun generateInstrumentSample(trackId: Int, t: Float, sampleCount: Long, style: String): Float {
+        val pcm = importedPcm
+        if (pcm != null && pcm.isNotEmpty()) {
+            val totalFrames = pcm.size / 2
+            if (totalFrames > 0) {
+                val cycleVal = 0.5f
+                val beatPhaseVal = (t % cycleVal) / cycleVal
+                return when (trackId) {
+                    1 -> { // VOCAL preset: Plays original centered audio
+                        val frameIdx = (sampleCount % totalFrames).toInt()
+                        val l = pcm[frameIdx * 2]
+                        val r = pcm[frameIdx * 2 + 1]
+                        (l + r) * 0.55f
+                    }
+                    2 -> { // GUITAR preset: Plays 1.5x speed with higher pass filter (chorus/plucked feel)
+                        val frameIdx = ((sampleCount * 3 / 2) % totalFrames).toInt()
+                        val l = pcm[frameIdx * 2]
+                        val r = pcm[frameIdx * 2 + 1]
+                        val raw = (l + r) * 0.5f
+                        val prevIdx = ((frameIdx - 1 + totalFrames) % totalFrames).toInt()
+                        val prevL = pcm[prevIdx * 2]
+                        val prevR = pcm[prevIdx * 2 + 1]
+                        val prevRaw = (prevL + prevR) * 0.5f
+                        (raw - prevRaw * 0.8f) * 0.85f
+                    }
+                    3 -> { // MAIN INSTRUMENT: Alternating pitch shift chord pads
+                        val pitchShift = 1.25f
+                        val frameIdx = ((sampleCount * pitchShift).toLong() % totalFrames).toInt()
+                        val l = pcm[frameIdx * 2]
+                        val r = pcm[frameIdx * 2 + 1]
+                        (l + r) * 0.45f
+                    }
+                    4 -> { // BASS tracks: Plays half speed (1 octave lower) + low pass filter
+                        val frameIdx = ((sampleCount / 2) % totalFrames).toInt()
+                        val nextIdx = ((frameIdx + 1) % totalFrames).toInt()
+                        val l1 = pcm[frameIdx * 2]
+                        val r1 = pcm[frameIdx * 2 + 1]
+                        val l2 = pcm[nextIdx * 2]
+                        val r2 = pcm[nextIdx * 2 + 1]
+                        val sample1 = (l1 + r1) * 0.5f
+                        val sample2 = (l2 + r2) * 0.5f
+                        ((sample1 + sample2) * 0.5f) * 1.5f
+                    }
+                    5 -> { // DRUM track: Pulsing, high-pass filtered rhythm gate beats
+                        val frameIdx = (sampleCount % totalFrames).toInt()
+                        val l = pcm[frameIdx * 2]
+                        val r = pcm[frameIdx * 2 + 1]
+                        val sample = (l + r) * 0.5f
+                        val prevIdx = ((frameIdx - 1 + totalFrames) % totalFrames).toInt()
+                        val prevL = pcm[prevIdx * 2]
+                        val prevR = pcm[prevIdx * 2 + 1]
+                        val prevSample = (prevL + prevR) * 0.5f
+                        val highPassed = sample - prevSample * 0.95f
+                        val cycleFrames = (22050 * 0.5f).toLong()
+                        val phase = (sampleCount % cycleFrames).toFloat() / cycleFrames.toFloat()
+                        val gate = if (phase < 0.15f || (phase in 0.48f..0.55f)) 1.4f else 0.15f
+                        highPassed * gate * 1.5f
+                    }
+                    6 -> { // Keyboard add-on
+                        val frameIdx = ((sampleCount * 2) % totalFrames).toInt()
+                        pcm[frameIdx * 2] * 0.4f
+                    }
+                    7, 8 -> { // Custom percussion
+                        val frameIdx = ((sampleCount + totalFrames / 4) % totalFrames).toInt()
+                        val raw = pcm[frameIdx * 2]
+                        val cycleSec = 0.25f
+                        val p = (t % cycleSec) / cycleSec
+                        val pluck = (1.0f - p * 4.0f).coerceIn(0.0f, 1.0f)
+                        raw * pluck * 0.35f
+                    }
+                    else -> { // Default mix ambient drone
+                        val frameIdx = (sampleCount % totalFrames).toInt()
+                        pcm[frameIdx * 2] * 0.2f
+                    }
+                }
+            }
+        }
+
         // Base rhythmic structure: beat (tempo = 120 bpm, pulse every 0.5 seconds)
         val cycle = 0.5f
         val beatPhase = (t % cycle) / cycle // 0.0 to 1.0 within beat

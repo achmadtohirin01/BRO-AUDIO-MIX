@@ -96,7 +96,8 @@ class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
                 ChannelTrackPreset(3, "Harmony Stem", "AI Extracted Harmony", "#FFD700", 1.1f),
                 ChannelTrackPreset(4, "Bass Stem", "AI Extracted Bass", "#39FF14", 0.9f),
                 ChannelTrackPreset(5, "Percussion Stem", "AI Extracted Beats", "#EA80FC", 1.1f)
-            )
+            ),
+            uriString = uriString
         )
         _importedSongs.value = _importedSongs.value + newSample
         loadSongSample(newSample)
@@ -181,6 +182,34 @@ class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
         return out
     }
 
+    private fun generateRealWaveformFromPcm(pcm: FloatArray, trackFactor: Float): List<Float> {
+        val barCount = 40
+        val out = mutableListOf<Float>()
+        val totalFrames = pcm.size / 2
+        if (totalFrames <= 0) return generateWaveformDummy(1, trackFactor)
+        
+        val framesPerBar = totalFrames / barCount
+        for (b in 0 until barCount) {
+            var sumSquare = 0.0f
+            val start = b * framesPerBar
+            val end = (b + 1) * framesPerBar
+            var samplesMeasured = 0
+            for (f in start until end) {
+                if (f * 2 + 1 < pcm.size) {
+                    val sample = (pcm[f * 2] + pcm[f * 2 + 1]) * 0.5f
+                    sumSquare += sample * sample
+                    samplesMeasured++
+                }
+            }
+            val rms = if (samplesMeasured > 0) {
+                kotlin.math.sqrt(sumSquare / samplesMeasured)
+            } else 0.0f
+            val modulatedPeak = (rms * 3.5f * trackFactor).coerceIn(0.12f, 1.0f)
+            out.add(modulatedPeak)
+        }
+        return out
+    }
+
     // Load / Import song and trigger "AI Stem Separation"
     fun loadSongSample(song: AudioSongSample) {
         viewModelScope.launch {
@@ -189,14 +218,37 @@ class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
             _currentSong.value = song
             stopPlayback()
 
-            // Cool multi-threaded analytical progress simulation
+            // Run high-fidelity decoding of the URI on a background thread if present
+            var decodedPcm: FloatArray? = null
+            if (song.uriString != null) {
+                _analysisProgress.value = 15.0f
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        decodedPcm = com.example.audio.AudioDecoder.decodeToPcm(
+                            app,
+                            song.uriString,
+                            targetSampleRate = 22050,
+                            targetChannels = 2,
+                            maxSeconds = 45
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                _analysisProgress.value = 65.0f
+            }
+
+            // Simulated separation progress completing
             while (_analysisProgress.value < 100.0f) {
-                delay(120)
-                _analysisProgress.value += 4.5f
+                delay(80)
+                _analysisProgress.value += 10.0f
             }
             _analysisProgress.value = 100.0f
-            delay(400)
+            delay(300)
             _isAnalyzingStems.value = false
+
+            // Set imported PCM in synthesizer
+            synthesizer.setImportedPcm(decodedPcm)
 
             // Populate Track 1 to 5 with imported song stems
             val currentList = _tracks.value.toMutableList()
@@ -204,11 +256,16 @@ class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
                 val channelIdx = preset.id - 1
                 if (channelIdx in 0..4) {
                     val currentTrack = currentList[channelIdx]
+                    val finalWaveform = if (decodedPcm != null) {
+                        generateRealWaveformFromPcm(decodedPcm!!, preset.density)
+                    } else {
+                        generateWaveformDummy(preset.id, preset.density)
+                    }
                     currentList[channelIdx] = currentTrack.copy(
                         name = preset.name,
                         instrumentName = preset.instrumentName,
                         colorHex = preset.colorHex,
-                        waveformPoints = generateWaveformDummy(preset.id, preset.density),
+                        waveformPoints = finalWaveform,
                         volume = 0.8f,
                         isCloned = false,
                         originalStyle = song.genre,
