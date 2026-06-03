@@ -1,7 +1,11 @@
 package com.example
 
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -66,6 +70,31 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+fun getFileName(context: android.content.Context, uri: Uri): String {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index != -1) {
+                    result = cursor.getString(index)
+                }
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/') ?: -1
+        if (cut != -1) {
+            result = result?.substring(cut + 1)
+        }
+    }
+    return result ?: "ImportedAudio.mp3"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DAWMainScreen(
@@ -107,6 +136,16 @@ fun DAWMainScreen(
     // Rendering simulation values
     val isRendering by viewModel.isRendering.collectAsState()
     val renderProgress by viewModel.renderProgress.collectAsState()
+
+    val importedSongs by viewModel.importedSongs.collectAsState()
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val fileName = getFileName(context, uri)
+            viewModel.importAudioFromStorage(uri.toString(), fileName)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -334,7 +373,7 @@ fun DAWMainScreen(
                         ) {
                             Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Impor Lagu Sampel", fontSize = 11.sp)
+                            Text("Impor Audio Penyimpanan", fontSize = 11.sp)
                         }
                     }
 
@@ -437,11 +476,15 @@ fun DAWMainScreen(
         // --- DRAWER SHEET: SONG SAMPLE CATALOG LOADER ---
         if (showImportSheet) {
             ImportSongsSheet(
-                samples = viewModel.songLibrary,
+                samples = importedSongs,
                 onClose = { showImportSheet = false },
                 onSelectSong = { song ->
                     showImportSheet = false
                     viewModel.loadSongSample(song)
+                },
+                onPickDeviceAudioClick = {
+                    showImportSheet = false
+                    audioPickerLauncher.launch("audio/*")
                 }
             )
         }
@@ -1499,7 +1542,8 @@ fun TransportControlDeck(
 fun ImportSongsSheet(
     samples: List<AudioSongSample>,
     onClose: () -> Unit,
-    onSelectSong: (AudioSongSample) -> Unit
+    onSelectSong: (AudioSongSample) -> Unit,
+    onPickDeviceAudioClick: () -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onClose,
@@ -1512,46 +1556,150 @@ fun ImportSongsSheet(
                 .padding(16.dp)
         ) {
             Text(
-                text = "LAGU SAMPEL RE-MIXING & STEM SEPARATION",
+                text = "PILIH & IMPOR AUDIO PENYIMPANAN",
                 color = NeonBlue,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(bottom = 12.dp)
+                modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            // Dynamic picker launcher action button
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0x1B00E5FF)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onPickDeviceAudioClick() }
+                    .border(1.dp, NeonBlue.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .padding(vertical = 4.dp)
             ) {
-                items(samples) { song ->
-                    Card(
-                        shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF162232)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectSong(song) }
-                            .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FolderOpen,
+                        contentDescription = "Pilih File Perangkat",
+                        tint = NeonBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Ambil File Audio Dari Penyimpanan",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.SansSerif
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "RIWAYAT AUDIO DI-IMPOR:",
+                color = DarkTextSecondary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            if (samples.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0x06FFFFFF))
+                        .border(1.dp, Color(0x0DFFFFFF), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        Row(
+                        Icon(
+                            imageVector = Icons.Default.LibraryMusic,
+                            contentDescription = null,
+                            tint = Color.Gray.copy(alpha = 0.5f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Belum ada file audio diimpor dari perangkat.",
+                            color = Color.LightGray,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Gunakan tombol di atas untuk memilah stem instrumental lagu Anda sendiri.",
+                            color = Color.Gray,
+                            fontSize = 9.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    items(samples) { song ->
+                        Card(
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF131A22)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .clickable { onSelectSong(song) }
+                                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(8.dp))
                         ) {
-                            Column {
-                                Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text("${song.artist} • ${song.genre}", color = DarkTextSecondary, fontSize = 11.sp)
-                            }
-                            
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0x1B00E5FF))
-                                    .border(1.dp, Color(0x6600E5FF), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Pisahkan Stems AI", color = NeonBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = song.title,
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${song.artist} • ${song.genre}",
+                                        color = DarkTextSecondary,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0x1B00E5FF))
+                                        .border(1.dp, Color(0x6600E5FF), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Muat Ulang Stems",
+                                        color = NeonBlue,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }

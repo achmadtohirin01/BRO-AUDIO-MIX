@@ -78,54 +78,29 @@ class AudioMixViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private var playbackJob: Job? = null
 
-    // Sample catalogue songs
-    val songLibrary = listOf(
-        AudioSongSample(
-            id = "s1",
-            title = "Kopi Dangdut",
-            artist = "Fahmi Shahab",
-            genre = "Salsa Dangdut",
-            durationText = "03:12",
-            basicStyles = listOf("Dangdut", "Latin", "Pop", "EDM", "Jazz"),
+    private val _importedSongs = MutableStateFlow<List<AudioSongSample>>(emptyList())
+    val importedSongs = _importedSongs.asStateFlow()
+
+    fun importAudioFromStorage(uriString: String, fileName: String) {
+        val cleanName = fileName.substringBeforeLast(".")
+        val newSample = AudioSongSample(
+            id = "custom_${System.currentTimeMillis()}",
+            title = cleanName,
+            artist = "Penyimpanan Perangkat",
+            genre = "Audio Impor",
+            durationText = "03:45",
+            basicStyles = listOf("Pop", "EDM", "Rock", "Acoustic", "Jazz"),
             tracksData = listOf(
-                ChannelTrackPreset(1, "Vocal Lead", "Fahmi Vocal Lead", "#00E5FF", 1.2f),
-                ChannelTrackPreset(2, "Classical Guitar", "Acoustic Guitar", "#FF007F", 0.8f),
-                ChannelTrackPreset(3, "Brass Section", "Salsa Trumpet", "#FFD700", 1.1f),
-                ChannelTrackPreset(4, "Bass Line", "Acoustic Bass", "#39FF14", 0.9f),
-                ChannelTrackPreset(5, "Percussion Block", "Kendang & Agogo Beat", "#EA80FC", 1.1f)
-            )
-        ),
-        AudioSongSample(
-            id = "s2",
-            title = "Lathi",
-            artist = "Weird Genius ft. Sara",
-            genre = "Indo EDM Electro",
-            durationText = "03:09",
-            basicStyles = listOf("EDM", "Dangdut", "Orchestral", "Rock", "Metal"),
-            tracksData = listOf(
-                ChannelTrackPreset(1, "Vocal Sinden", "Sinden Vocal", "#00E5FF", 1.5f),
-                ChannelTrackPreset(2, "Acoustic Pluck", "Acoustic Guitar", "#FF007F", 0.7f),
-                ChannelTrackPreset(3, "Gamelan Bells", "Saron & Gamelan Synth", "#FFD700", 1.3f),
-                ChannelTrackPreset(4, "Cyber Sub-Bass", "EDM Sub Bass", "#39FF14", 1.0f),
-                ChannelTrackPreset(5, "EDM Drums", "Electro Drum Kit", "#EA80FC", 1.4f)
-            )
-        ),
-        AudioSongSample(
-            id = "s3",
-            title = "Smells Like Teen Spirit",
-            artist = "Nirvana",
-            genre = "Grunge Alternative",
-            durationText = "04:30",
-            basicStyles = listOf("Rock", "Metal", "Grunge", "Blues", "Cinematic"),
-            tracksData = listOf(
-                ChannelTrackPreset(1, "Lead Vocals", "Cobain Screams", "#00E5FF", 1.3f),
-                ChannelTrackPreset(2, "Distorted Left", "Fender Jaguar", "#FF007F", 1.2f),
-                ChannelTrackPreset(3, "Rhythm Right", "Stereo Chorus Guitar", "#FFD700", 0.9f),
-                ChannelTrackPreset(4, "Precision Bass", "Solid Bass Track", "#39FF14", 1.1f),
-                ChannelTrackPreset(5, "Rock Drums", "Heavy Acoustic Drums", "#EA80FC", 1.4f)
+                ChannelTrackPreset(1, "Vocal Stem", "AI Extracted Vocal", "#00E5FF", 1.2f),
+                ChannelTrackPreset(2, "Melody Stem", "AI Extracted Melody", "#FF007F", 0.8f),
+                ChannelTrackPreset(3, "Harmony Stem", "AI Extracted Harmony", "#FFD700", 1.1f),
+                ChannelTrackPreset(4, "Bass Stem", "AI Extracted Bass", "#39FF14", 0.9f),
+                ChannelTrackPreset(5, "Percussion Stem", "AI Extracted Beats", "#EA80FC", 1.1f)
             )
         )
-    )
+        _importedSongs.value = _importedSongs.value + newSample
+        loadSongSample(newSample)
+    }
 
     init {
         // Build 10 default offline channel tracks
